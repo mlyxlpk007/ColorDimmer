@@ -1,52 +1,102 @@
 #include "sid_rmt_sender.h"
+#include "driver/rmt.h"
+#include "esp_log.h"
 
-#define T0H_NS  300   // 0.3us
-#define T0L_NS  900   // 0.9us
-#define T1H_NS  900   // 0.9us
-#define T1L_NS  300   // 0.3us
-#define RESET_US 210
+#define RMT_TX_CHANNEL    RMT_CHANNEL_0
+#define RMT_TX_GPIO       25
+#define RMT_CLK_DIV       4   // 80MHz/4=20MHz, 1tick=0.05us
 
-static inline uint32_t ns_to_ticks(uint32_t ns) {
-    return (uint32_t)(ns / 12.5); // APB 80MHz
-}
+#define T0H_TICKS  6
+#define T0L_TICKS  18
+#define T1H_TICKS  18
+#define T1L_TICKS  6
+#define RESET_TICKS 4200
 
-SIDDriver::SIDDriver(gpio_num_t gpio, rmt_channel_t channel)
-    : _gpio(gpio), _channel(channel) {}
-
-void SIDDriver::begin() {
-    rmt_config_t config = RMT_DEFAULT_CONFIG_TX(_gpio, _channel);
-    config.clk_div = 1;  // 80MHz / 1 = 12.5ns ticks
-    rmt_config(&config);
-    rmt_driver_install(_channel, 0, 0);
-}
-
-void SIDDriver::build_rmt_items(const uint8_t* buf, size_t len, rmt_item32_t* items) {
-    size_t idx = 0;
-    for (size_t i = 0; i < len; ++i) {
-        uint8_t byte = buf[i];
-        for (int bit = 7; bit >= 0; --bit) {
-            bool is1 = (byte >> bit) & 0x01;
-            items[idx].level0 = 1;
-            items[idx].duration0 = ns_to_ticks(is1 ? T1H_NS : T0H_NS);
-            items[idx].level1 = 0;
-            items[idx].duration1 = ns_to_ticks(is1 ? T1L_NS : T0L_NS);
-            ++idx;
+void sid_rmt_init(void)
+{
+    rmt_config_t config = {
+        .rmt_mode = RMT_MODE_TX,
+        .channel = RMT_TX_CHANNEL,
+        .gpio_num = RMT_TX_GPIO,
+        .clk_div = RMT_CLK_DIV,
+        .mem_block_num = 1,
+        .tx_config = {
+            .loop_en = false,
+            .carrier_en = false,
+            .idle_output_en = true,
+            .idle_level = RMT_IDLE_LEVEL_LOW,
         }
-    }
-    // Reset
+    };
+    rmt_config(&config);
+    rmt_driver_install(config.channel, 0, 0);
+}
+
+static void build_sid_rmt_items(const uint32_t* data, int chip_count, uint16_t gain, rmt_item32_t* items, int* item_count)
+{
+    int idx = 0;
+    // Reset (帧头)
     items[idx].level0 = 0;
-    items[idx].duration0 = (uint32_t)(RESET_US * 80);  // 80MHz ticks
+    items[idx].duration0 = RESET_TICKS;
     items[idx].level1 = 0;
     items[idx].duration1 = 0;
+    idx++;
+
+    // 芯片数据
+    for (int i = 0; i < chip_count; ++i) {
+        uint32_t d = data[i];
+        for (int bit = 31; bit >= 0; --bit) {
+            if (d & (1U << bit)) {
+                items[idx].level0 = 1;
+                items[idx].duration0 = T1H_TICKS;
+                items[idx].level1 = 0;
+                items[idx].duration1 = T1L_TICKS;
+            } else {
+                items[idx].level0 = 1;
+                items[idx].duration0 = T0H_TICKS;
+                items[idx].level1 = 0;
+                items[idx].duration1 = T0L_TICKS;
+            }
+            idx++;
+        }
+    }
+    // 增益
+    for (int bit = 15; bit >= 0; --bit) {
+        if (gain & (1U << bit)) {
+            items[idx].level0 = 1;
+            items[idx].duration0 = T1H_TICKS;
+            items[idx].level1 = 0;
+            items[idx].duration1 = T1L_TICKS;
+        } else {
+            items[idx].level0 = 1;
+            items[idx].duration0 = T0H_TICKS;
+            items[idx].level1 = 0;
+            items[idx].duration1 = T0L_TICKS;
+        }
+        idx++;
+    }
+    // Reset (帧尾)
+    items[idx].level0 = 0;
+    items[idx].duration0 = RESET_TICKS;
+    items[idx].level1 = 0;
+    items[idx].duration1 = 0;
+    idx++;
+
+    *item_count = idx;
 }
 
-void SIDDriver::send_data(const uint8_t* buf, size_t len) {
-    const size_t item_num = len * 8 + 1;
-    rmt_item32_t* items = (rmt_item32_t*)malloc(item_num * sizeof(rmt_item32_t));
-    if (!items) return;
-
-    build_rmt_items(buf, len, items);
-    rmt_write_items(_channel, items, item_num, true);
-    rmt_wait_tx_done(_channel, portMAX_DELAY);
-    free(items);
-}
+void send_data(const uint8_t* buf, int len, uint16_t gain)
+{
+    int chip_count = len / 4;
+    uint32_t chip_data[SID_MAX_CHIPS];
+    for (int i = 0; i < chip_count; ++i) {
+        chip_data[i] = ((uint32_t)buf[i*4+0] << 24) |
+                       ((uint32_t)buf[i*4+1] << 16) |
+                       ((uint32_t)buf[i*4+2] << 8)  |
+                       ((uint32_t)buf[i*4+3]);
+    }
+    rmt_item32_t items[2 + 32*SID_MAX_CHIPS + 16];
+    int item_count = 0;
+    build_sid_rmt_items(chip_data, chip_count, gain, items, &item_count);
+    rmt_write_items(RMT_TX_CHANNEL, items, item_count, true);
+    rmt_wait_tx_done(RMT_TX_CHANNEL, portMAX_DELAY);
+} 
