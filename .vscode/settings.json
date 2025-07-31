@@ -1,0 +1,8 @@
+{
+    "C_Cpp.errorSquiggles": "disabled",
+    "files.associations": {
+        "rmt.h": "c",
+        "sid_rmt_sender.h": "c",
+        "freertos.h": "c"
+    }
+}
