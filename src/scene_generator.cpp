@@ -119,19 +119,16 @@ public:
     static void generateStaticScene(SceneManager& sceneManager, uint8_t sceneId,
                                    uint8_t r, uint8_t g, uint8_t b) {
         uint8_t* rgbData = (uint8_t*)malloc(108);
-        if (!rgbData) return;
-        
+        if (!rgbData) return;        
         for (int led = 0; led < 36; led++) {
             int baseIndex = led * 3;
             rgbData[baseIndex + 0] = r;
             rgbData[baseIndex + 1] = g;
             rgbData[baseIndex + 2] = b;
-        }
-        
+        }        
         sceneManager.saveScene(sceneId, rgbData, 1, 0);
         free(rgbData);
-    }
-    
+    }    
     // 从头文件数据创建场景
     static void createSceneFromData(SceneManager& sceneManager, uint8_t sceneId,
                                    const uint8_t* headerData, uint8_t frameCount, uint8_t frameDelayMs) {

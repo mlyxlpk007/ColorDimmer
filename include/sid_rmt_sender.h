@@ -11,4 +11,5 @@ void send_data(const uint8_t* buf, int len, uint16_t gain);
 void set_brightness(uint8_t brightness);
 uint8_t get_brightness(void);
 void getColorTempRGB(uint8_t tempIndex, uint8_t* r, uint8_t* g, uint8_t* b);
+void getColorTempRGBWithDuv(uint8_t tempIndex, uint8_t duvIndex, uint8_t* r, uint8_t* g, uint8_t* b);
 #endif
