@@ -25,6 +25,9 @@ public:
     // 设置动画效果（多态）
     void setEffect(AnimEffect* effect);
     
+    // 更新当前效果（不重启动画）
+    void updateCurrentEffect();
+    
     // 设置动画数据
     void setAnimationData(const uint8_t* data, int frameCount);
     

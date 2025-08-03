@@ -8,7 +8,7 @@ extern "C" {
 #include <Arduino.h>
 extern bool lightPower;
 // 全局亮度变量
-uint8_t global_brightness = 100; // 默认100%亮度
+uint8_t global_brightness = 50; // 默认100%亮度
 // 色温模式变量
 extern uint8_t currentColorTemp;
 extern bool colorTempMode; // 是否处于色温模式
@@ -395,10 +395,10 @@ void getColorTempRGB(uint8_t tempIndex, uint8_t* r, uint8_t* g, uint8_t* b) {
     }
     
     // 默认使用标准DUV (DUV=0，即第3个变体)
-    uint8_t duvIndex = 2; // DUV=0对应的索引
+    uint8_t duvIndex = 3; // DUV=0对应的索引
     
     // 计算表格索引：每个色温有5个DUV变体
-    uint16_t tableIndex = (tempIndex - 1) * 5 + duvIndex;
+    uint16_t tableIndex = (tempIndex - 1) * 5 + duvIndex-1;
     
     // 查表获取RGB值
     *r = COLOR_TEMP_TABLE[tableIndex][0];
@@ -411,14 +411,13 @@ void getColorTempRGB(uint8_t tempIndex, uint8_t* r, uint8_t* g, uint8_t* b) {
 
 // 带DUV参数的色温RGB转换函数
 void getColorTempRGBWithDuv(uint8_t tempIndex, uint8_t duvIndex, uint8_t* r, uint8_t* g, uint8_t* b) {
-    // 参数检查
-    if (tempIndex < 1 || tempIndex > 61 || duvIndex >= 5 || !r || !g || !b) {
+    // 参数检查 (DUV索引1-5)
+    if (tempIndex < 1 || tempIndex > 61 || duvIndex < 1 || duvIndex > 5 || !r || !g || !b) {
         *r = *g = *b = 0;
         return;
     }
     
-    // 计算表格索引：每个色温有5个DUV变体
-    uint16_t tableIndex = (tempIndex - 1) * 5 + duvIndex;
+    uint16_t tableIndex = (tempIndex - 1) * 5 + (duvIndex - 1);
     
     // 查表获取RGB值
     *r = COLOR_TEMP_TABLE[tableIndex][0];
@@ -426,7 +425,7 @@ void getColorTempRGBWithDuv(uint8_t tempIndex, uint8_t duvIndex, uint8_t* r, uin
     *b = COLOR_TEMP_TABLE[tableIndex][2];
     
     Serial.printf("Color temp %d (DUV=%.3f): R=%d G=%d B=%d\n", 
-                 tempIndex, DUV_OFFSETS[duvIndex], *r, *g, *b);
+                 tempIndex, DUV_OFFSETS[duvIndex - 1], *r, *g, *b);
 }
 #define RMT_TX_CHANNEL    RMT_CHANNEL_1
 #define RMT_TX_GPIO       GPIO_NUM_25
@@ -509,6 +508,20 @@ static void build_sid_rmt_items(const uint32_t* data, int chip_count, uint16_t g
     *item_count = idx;
 }
 
+void dimmer_blank()
+{
+   
+    uint32_t chip_data[SID_MAX_CHIPS];
+    for (int i = 0; i < SID_MAX_CHIPS; ++i) {
+        chip_data[i] = 0x000000;
+    }
+    rmt_item32_t items[2 + 24*SID_MAX_CHIPS + 16];
+    int item_count = 0;
+    build_sid_rmt_items(chip_data, SID_MAX_CHIPS, 0, items, &item_count);
+    rmt_write_items(RMT_TX_CHANNEL, items, item_count, true);
+    rmt_wait_tx_done(RMT_TX_CHANNEL, portMAX_DELAY);
+}
+
 void send_data(const uint8_t* buf, int len, uint16_t gain)
 {
     //Serial.println("send_data called");
@@ -527,10 +540,15 @@ void send_data(const uint8_t* buf, int len, uint16_t gain)
     } else {
         // 统一处理：应用亮度调节到RGB数据
         for (int i = 0; i < chip_count; ++i) {
-            // 应用亮度调节到RGB值
-            uint8_t r = (uint8_t)((buf[i*3+0] * global_brightness) / 100);
-            uint8_t g = (uint8_t)((buf[i*3+1] * global_brightness) / 100);
-            uint8_t b = (uint8_t)((buf[i*3+2] * global_brightness) / 100);
+            // 应用亮度调节到RGB值，使用16位计算避免溢出
+            uint16_t r = (uint16_t)((buf[LED_MATRIX_PATTERN[i]*3+0] * global_brightness) / 100);
+            uint16_t g = (uint16_t)((buf[LED_MATRIX_PATTERN[i]*3+1] * global_brightness) / 100);
+            uint16_t b = (uint16_t)((buf[LED_MATRIX_PATTERN[i]*3+2] * global_brightness) / 100);
+            
+            // 确保值不超过255
+            if (r > 255) r = 255;
+            if (g > 255) g = 255;
+            if (b > 255) b = 255;
             
             chip_data[i] = ((uint32_t)r << 16) |
                            ((uint32_t)g << 8)  |

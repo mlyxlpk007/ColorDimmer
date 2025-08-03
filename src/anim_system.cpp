@@ -39,13 +39,19 @@ void AnimSystem::init() {
     animMutex_ = xSemaphoreCreateMutex();
     eventGroup_ = xEventGroupCreate();
     
+    // 检查创建是否成功
+    if (!animMutex_) {
+        Serial.println("ERROR: Failed to create animMutex_");
+    }
+    if (!eventGroup_) {
+        Serial.println("ERROR: Failed to create eventGroup_");
+    }
+    
     // 设置全局实例指针
-    g_animSystem = this;
-    
+    g_animSystem = this;    
     // 生成默认测试动画
-    generateTestAnimation();
-    
-    Serial.println("AnimSystem initialized");
+    generateTestAnimation();    
+    Serial.printf("AnimSystem initialized - mutex: %p, eventGroup: %p\n", animMutex_, eventGroup_);
 }
 
 void AnimSystem::setEffect(AnimEffect* effect) {
@@ -70,8 +76,32 @@ void AnimSystem::setEffect(AnimEffect* effect) {
     Serial.printf("Effect set to: %s, frames=%d\n", currentEffect_->getName(), animFrameCount_);
 }
 
+void AnimSystem::updateCurrentEffect() {
+    if (!currentEffect_ || !animationRunning_) return;
+    
+    // 等待发送任务完成当前发送
+    if (eventGroup_) {
+        xEventGroupWaitBits(eventGroup_, SEND_COMPLETE_BIT, pdTRUE, pdFALSE, pdMS_TO_TICKS(100));
+    }
+    
+    // 在互斥锁保护下重新生成动画数据
+    xSemaphoreTake(animMutex_, portMAX_DELAY);
+    currentEffect_->generateAnimation(animFrames_, animFrameCount_, FRAME_SIZE);
+    currentFrame_ = 0;  // 重置到第一帧
+    // 更新两个buffer为新的第一帧数据
+    memcpy(bufferA_, &animFrames_[0], FRAME_SIZE);
+    memcpy(bufferB_, &animFrames_[0], FRAME_SIZE);
+    xSemaphoreGive(animMutex_);
+    
+    // 清除事件组位，确保任务同步
+    if (eventGroup_) {
+        xEventGroupClearBits(eventGroup_, SEND_COMPLETE_BIT);
+    }    
+    Serial.printf("Current effect updated: %s\n", currentEffect_->getName());
+}
+
 void AnimSystem::start() {
-    if (!animationRunning_ && currentEffect_) {
+    if (!animationRunning_ && currentEffect_ && eventGroup_) {
         animationRunning_ = true;
         currentFrame_ = 0;
         xEventGroupClearBits(eventGroup_, SEND_COMPLETE_BIT);
@@ -167,10 +197,7 @@ void AnimSystem::sendTask() {
     while (1) {
         if (animationRunning_) {
             // 发送当前发送buffer的数据
-        //    Serial.println("send start-------");    
             send_data(sendBuffer_, FRAME_SIZE, 0xFFFF);
-        //    Serial.println("send end-------------------------------");          
-            
             // 发送完成后，在互斥锁保护下交换buffer
             xSemaphoreTake(animMutex_, portMAX_DELAY);
             temp = updateBuffer_;

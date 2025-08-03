@@ -86,12 +86,39 @@ private:
 // 色温效果
 class ColorTempEffect : public AnimEffect {
 public:
-    ColorTempEffect(uint8_t tempIndex = 1) : tempIndex_(tempIndex) {}
+    ColorTempEffect(uint8_t tempIndex = 1, uint8_t duvIndex = 3) : tempIndex_(tempIndex), duvIndex_(duvIndex) {}
     void generateAnimation(uint8_t* animFrames, int frameCount, int frameSize) override;
     const char* getName() const override { return "ColorTemp"; }
     int getFrameCount() const override { return 1; }
     void setColorTemp(uint8_t tempIndex) { tempIndex_ = tempIndex; }
+    void setDuvIndex(uint8_t duvIndex) { 
+        duvIndex_ = duvIndex; 
+    }
     uint8_t getColorTemp() const { return tempIndex_; }
+    uint8_t getDuvIndex() const { return duvIndex_; }
 private:
     uint8_t tempIndex_;
+    uint8_t duvIndex_;  // DUV索引 (1-5)
+};
+
+// 图像数据效果 - 从images.h加载预定义的动画数据
+class ImageDataEffect : public AnimEffect {
+public:
+    ImageDataEffect(const uint8_t* imageData = nullptr) : imageData_(imageData) {}
+    void generateAnimation(uint8_t* animFrames, int frameCount, int frameSize) override;
+    const char* getName() const override { return "ImageData"; }
+    int getFrameCount() const override { 
+        if (!imageData_) return 1;
+        // 从数据头部读取帧数 (第1-2字节，大端模式)
+        return (imageData_[0] << 8) | imageData_[1]; 
+    }
+    int getFrameDelay() const {
+        if (!imageData_) return 50;
+        // 从数据头部读取延迟 (第3字节)
+        return imageData_[2];
+    }
+    void setImageData(const uint8_t* imageData) { imageData_ = imageData; }
+    const uint8_t* getImageData() const { return imageData_; }
+private:
+    const uint8_t* imageData_;  // 指向images.h中的数组
 }; 
