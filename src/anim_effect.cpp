@@ -2,6 +2,13 @@
 #include "sid_rmt_sender.h"
 #include <math.h>
 #include <Arduino.h>
+
+
+
+
+
+
+
 int _duv=3;
 // 呼吸灯效果实现
 void BreathEffect::generateAnimation(uint8_t* animFrames, int frameCount, int frameSize) {
@@ -23,7 +30,7 @@ void BreathEffect::generateAnimation(uint8_t* animFrames, int frameCount, int fr
         }
     }
     
-    Serial.printf("BreathEffect generated: %d frames, base color R=%d G=%d B=%d\n", 
+    debug_printf("BreathEffect generated: %d frames, base color R=%d G=%d B=%d\n", 
                   frameCount, r_, g_, b_);
 }
 void set_duv(int duv)
@@ -154,8 +161,8 @@ void ColorTempEffect::generateAnimation(uint8_t* animFrames, int frameCount, int
             }
         }
     }
-    Serial.printf("ColorTempEffect generated: %d frames, temp=%d, duv=%d, R=%d G=%d B=%d\n", 
-                  frameCount, tempIndex_, duvIndex_, r, g, b);
+    // Serial.printf("ColorTempEffect generated: %d frames, temp=%d, duv=%d, R=%d G=%d B=%d\n", 
+    //               frameCount, tempIndex_, duvIndex_, r, g, b);
 }
 
 // ImageDataEffect实现
@@ -190,3 +197,6 @@ void ImageDataEffect::generateAnimation(uint8_t* animFrames, int frameCount, int
     
     Serial.printf("ImageDataEffect: Copied %d bytes of RGB data\n", copySize);
 } 
+
+
+ 

@@ -1,4 +1,76 @@
 #include "sid_rmt_sender.h"
+#include <stdarg.h>
+
+// 串口打印接口函数实现
+void debug_print(const char* str) {
+#if ENABLE_SERIAL_PRINT
+    Serial.print(str);
+#endif
+}
+
+void debug_printf(const char* format, ...) {
+#if ENABLE_SERIAL_PRINT
+    va_list args;
+    va_start(args, format);
+    Serial.printf(format, args);
+    va_end(args);
+#endif
+}
+
+void debug_println(const char* str) {
+#if ENABLE_SERIAL_PRINT
+    Serial.println(str);
+#endif
+}
+
+void debug_print(int value) {
+#if ENABLE_SERIAL_PRINT
+    Serial.print(value);
+#endif
+}
+
+void debug_print(unsigned int value) {
+#if ENABLE_SERIAL_PRINT
+    Serial.print(value);
+#endif
+}
+
+void debug_print(long value) {
+#if ENABLE_SERIAL_PRINT
+    Serial.print(value);
+#endif
+}
+
+void debug_print(unsigned long value) {
+#if ENABLE_SERIAL_PRINT
+    Serial.print(value);
+#endif
+}
+
+void debug_println(int value) {
+#if ENABLE_SERIAL_PRINT
+    Serial.println(value);
+#endif
+}
+
+void debug_println(unsigned int value) {
+#if ENABLE_SERIAL_PRINT
+    Serial.println(value);
+#endif
+}
+
+void debug_println(long value) {
+#if ENABLE_SERIAL_PRINT
+    Serial.println(value);
+#endif
+}
+
+void debug_println(unsigned long value) {
+#if ENABLE_SERIAL_PRINT
+    Serial.println(value);
+#endif
+}
+
 extern "C" {
 #include "driver/rmt.h"
 #include "soc/rmt_struct.h"
@@ -7,11 +79,17 @@ extern "C" {
 #include "esp_log.h"
 #include <Arduino.h>
 extern bool lightPower;
-// 全局亮度变量
+// 全局亮度变量（当前应用值）
 uint8_t global_brightness = 50; // 默认100%亮度
+static uint8_t target_brightness = 50;  // 目标亮度
+static uint8_t fade_frames = 0;         // 特殊淡入/淡出剩余帧数
 // 色温模式变量
 extern uint8_t currentColorTemp;
 extern bool colorTempMode; // 是否处于色温模式
+
+// 来自动画系统的亮度冻结状态（由动画系统维护）
+extern bool g_anim_brightnessFreezeActive;
+extern uint8_t g_anim_frozenBrightness;
 
 // 色温RGB查表数据 (305行，每5行为一组DUV变体)
 static const uint8_t COLOR_TEMP_TABLE[305][3] = {
@@ -405,8 +483,8 @@ void getColorTempRGB(uint8_t tempIndex, uint8_t* r, uint8_t* g, uint8_t* b) {
     *g = COLOR_TEMP_TABLE[tableIndex][1];
     *b = COLOR_TEMP_TABLE[tableIndex][2];
     
-    Serial.printf("Color temp %d (DUV=%.3f): R=%d G=%d B=%d\n", 
-                 tempIndex, DUV_OFFSETS[duvIndex], *r, *g, *b);
+    // Serial.printf("Color temp %d (DUV=%.3f): R=%d G=%d B=%d\n", 
+    //               tempIndex, DUV_OFFSETS[duvIndex], *r, *g, *b);
 }
 
 // 带DUV参数的色温RGB转换函数
@@ -424,8 +502,8 @@ void getColorTempRGBWithDuv(uint8_t tempIndex, uint8_t duvIndex, uint8_t* r, uin
     *g = COLOR_TEMP_TABLE[tableIndex][1];
     *b = COLOR_TEMP_TABLE[tableIndex][2];
     
-    Serial.printf("Color temp %d (DUV=%.3f): R=%d G=%d B=%d\n", 
-                 tempIndex, DUV_OFFSETS[duvIndex - 1], *r, *g, *b);
+    // Serial.printf("Color temp %d (DUV=%.3f): R=%d G=%d B=%d\n", 
+    //               tempIndex, DUV_OFFSETS[duvIndex - 1], *r, *g, *b);
 }
 #define RMT_TX_CHANNEL    RMT_CHANNEL_1
 #define RMT_TX_GPIO       GPIO_NUM_25
@@ -451,9 +529,9 @@ void sid_rmt_init(void)
 
     esp_err_t err;
     err = rmt_config(&config);
-    Serial.printf("rmt_config: %d\n", err);
+    debug_printf("rmt_config: %d\n", err);
     err = rmt_driver_install(config.channel, 0, 0);
-    Serial.printf("rmt_driver_install: %d\n", err);
+    debug_printf("rmt_driver_install: %d\n", err);
 }
 
 static void build_sid_rmt_items(const uint32_t* data, int chip_count, uint16_t gain, rmt_item32_t* items, int* item_count)
@@ -508,51 +586,83 @@ static void build_sid_rmt_items(const uint32_t* data, int chip_count, uint16_t g
     *item_count = idx;
 }
 
-void dimmer_blank()
-{
-   
-    uint32_t chip_data[SID_MAX_CHIPS];
-    for (int i = 0; i < SID_MAX_CHIPS; ++i) {
-        chip_data[i] = 0x000000;
-    }
-    rmt_item32_t items[2 + 24*SID_MAX_CHIPS + 16];
-    int item_count = 0;
-    build_sid_rmt_items(chip_data, SID_MAX_CHIPS, 0, items, &item_count);
-    rmt_write_items(RMT_TX_CHANNEL, items, item_count, true);
-    rmt_wait_tx_done(RMT_TX_CHANNEL, portMAX_DELAY);
+// 启动一个帧同步亮度淡入/淡出到目标值（用于 dimmer_blank 内部调用）
+void start_brightness_fade(uint8_t target, uint8_t frames) {
+    if (frames == 0) frames = 1;
+    if (target > 100) target = 100;
+    target_brightness = target;
+    fade_frames = frames;
 }
+
+// 帧同步：每次调用推进一步并返回当前应用亮度（±1 或按特殊淡出策略）
+uint8_t get_brightness_frame(void) {
+    if (g_anim_brightnessFreezeActive) {
+        return g_anim_frozenBrightness;
+    }
+    if (fade_frames > 0) {
+        // 采用均匀步进至目标（每帧一步，剩余帧数控制总时长）
+        if (global_brightness < target_brightness) {
+            global_brightness++;
+        } else if (global_brightness > target_brightness) {
+            global_brightness--;
+        }
+        fade_frames--;
+        return global_brightness;
+    }
+    // 默认每帧±1
+    if (global_brightness < target_brightness) {
+        global_brightness++;
+    } else if (global_brightness > target_brightness) {
+        global_brightness--;
+    }
+    
+    // 关屏逻辑：当亮度到达0时，自动设置lightPower=false
+    if (global_brightness == 0 && target_brightness == 0) {
+        debug_printf("Turning off light: global_brightness=%d, target_brightness=%d\n", global_brightness, target_brightness);
+        lightPower = false;
+    }
+    
+    return global_brightness;
+}
+
+// 设置亮度 (0-100) - 仅设置目标；实际应用在 send_data 调用时逐帧推进
+void set_brightness(uint8_t brightness) {
+    if (brightness > 100) brightness = 100;
+    target_brightness = brightness;
+}
+
+// 获取目标亮度（上层查询）
+uint8_t get_brightness(void) {
+    return target_brightness;
+}
+
+// dimmer_blank() 函数已移除，现在使用 setLightPower(false, 0) 接口
 
 void send_data(const uint8_t* buf, int len, uint16_t gain)
 {
-    //Serial.println("send_data called");
-   // gain=0XFFFF;
     int chip_count = len / 3;
     if (chip_count > SID_MAX_CHIPS) {
-   //     Serial.println("chip_count overflow");
         return;
     }
+
     uint32_t chip_data[SID_MAX_CHIPS];
+    
     if(!lightPower)
     {
+        // 关闭状态，显示黑屏
         for (int i = 0; i < chip_count; ++i) {
             chip_data[i] = 0x000000;
         }
     } else {
-        // 统一处理：应用亮度调节到RGB数据
+        // 正常显示，使用亮度平滑控制
+        uint8_t applied_brightness = get_brightness_frame();
+        
         for (int i = 0; i < chip_count; ++i) {
-            // 应用亮度调节到RGB值，使用16位计算避免溢出
-            uint16_t r = (uint16_t)((buf[LED_MATRIX_PATTERN[i]*3+0] * global_brightness) / 100);
-            uint16_t g = (uint16_t)((buf[LED_MATRIX_PATTERN[i]*3+1] * global_brightness) / 100);
-            uint16_t b = (uint16_t)((buf[LED_MATRIX_PATTERN[i]*3+2] * global_brightness) / 100);
-            
-            // 确保值不超过255
-            if (r > 255) r = 255;
-            if (g > 255) g = 255;
-            if (b > 255) b = 255;
-            
-            chip_data[i] = ((uint32_t)r << 16) |
-                           ((uint32_t)g << 8)  |
-                           ((uint32_t)b);
+            uint16_t r = (uint16_t)((buf[LED_MATRIX_PATTERN[i]*3+0] * applied_brightness) / 100);
+            uint16_t g = (uint16_t)((buf[LED_MATRIX_PATTERN[i]*3+1] * applied_brightness) / 100);
+            uint16_t b = (uint16_t)((buf[LED_MATRIX_PATTERN[i]*3+2] * applied_brightness) / 100);
+            if (r > 255) r = 255; if (g > 255) g = 255; if (b > 255) b = 255;
+            chip_data[i] = ((uint32_t)r << 16) | ((uint32_t)g << 8)  | ((uint32_t)b);
         }
     }
     rmt_item32_t items[2 + 24*SID_MAX_CHIPS + 16];
@@ -562,14 +672,9 @@ void send_data(const uint8_t* buf, int len, uint16_t gain)
     rmt_wait_tx_done(RMT_TX_CHANNEL, portMAX_DELAY);
 }
 
-// 设置亮度 (0-100)
-void set_brightness(uint8_t brightness) {
-    if (brightness > 100) brightness = 100;
-    global_brightness = brightness;
-    Serial.printf("Brightness set to: %d%%\n", global_brightness);
-}
-
-// 获取当前亮度
-uint8_t get_brightness(void) {
-    return global_brightness;
+// 提供一个外部设置斜坡帧数的方式：由上层调用开启一次斜坡
+void begin_brightness_ramp(uint8_t frames) {
+    if (frames == 0) frames = 1;
+    // frames_remaining = frames; // This line is removed as per the new logic
+    // step_accum = 0; // This line is removed as per the new logic
 } 

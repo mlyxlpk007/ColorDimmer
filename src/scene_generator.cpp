@@ -1,5 +1,12 @@
 #include "scene_manager.h"
 #include <Arduino.h>
+#include "sid_rmt_sender.h"
+
+
+
+
+
+
 
 // 场景数据生成器
 class SceneGenerator {
@@ -143,7 +150,7 @@ public:
     
     // 生成所有默认场景
     static void generateAllDefaultScenes(SceneManager& sceneManager) {
-        Serial.println("生成默认场景...");
+        debug_println("生成默认场景...");
         
         // 场景0: 红色呼吸灯
         generateBreathingScene(sceneManager, 0, 255, 0, 0, 30);
@@ -175,7 +182,7 @@ public:
         // 场景9: 静态红色
         generateStaticScene(sceneManager, 9, 255, 0, 0);
         
-        Serial.println("默认场景生成完成");
+        debug_println("默认场景生成完成");
     }
 };
 
@@ -185,11 +192,11 @@ SceneManager g_sceneManager;
 // 初始化场景系统
 bool initSceneSystem() {
     if (!g_sceneManager.init()) {
-        Serial.println("场景系统初始化失败");
+        debug_println("场景系统初始化失败");
         return false;
     }
     
-    Serial.println("场景系统初始化成功");
+            debug_println("场景系统初始化成功");
     
     // 如果没有场景，创建默认场景
     if (!g_sceneManager.sceneExists(0)) {
@@ -207,11 +214,11 @@ bool loadSceneToAnimation(uint8_t sceneId) {
     SceneData sceneData;
     
     if (!g_sceneManager.loadScene(sceneId, sceneData)) {
-        Serial.printf("加载场景 %d 失败\n", sceneId);
+        debug_printf("加载场景 %d 失败\n", sceneId);
         return false;
     }
     
-    Serial.printf("成功加载场景 %d: 帧数=%d, 延迟=%dms\n", 
+    debug_printf("成功加载场景 %d: 帧数=%d, 延迟=%dms\n", 
                  sceneId, sceneData.frameCount, sceneData.frameDelayMs);
     
     // 这里可以将场景数据传递给动画系统
@@ -220,3 +227,6 @@ bool loadSceneToAnimation(uint8_t sceneId) {
     g_sceneManager.freeSceneData(sceneData);
     return true;
 } 
+
+
+ 

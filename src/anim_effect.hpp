@@ -13,12 +13,21 @@ public:
     virtual const char* getName() const = 0;
     // 获取帧数
     virtual int getFrameCount() const = 0;
+    // 帧间延时（毫秒）
+    virtual int getFrameDelay() const { return 20; }
+
+    // 类型探测与可选接口（避免使用 RTTI）
+    virtual bool isColorTemp() const { return false; }
+    virtual void setColorTemp(uint8_t /*tempIndex*/) {}
+    virtual void setDuvIndex(uint8_t /*duvIndex*/) {}
+    virtual uint8_t getColorTemp() const { return 0; }
+    virtual uint8_t getDuvIndex() const { return 0; }
 };
 
 // 呼吸灯效果
 class BreathEffect : public AnimEffect {
 public:
-    BreathEffect(uint8_t r = 255, uint8_t g = 100, uint8_t b = 50, int frames = 50) : r_(r), g_(g), b_(b), frames_(frames) {}
+    BreathEffect(uint8_t r = 255, uint8_t g = 100, uint8_t b = 50, int frames = 100) : r_(r), g_(g), b_(b), frames_(frames) {}
     
     void generateAnimation(uint8_t* animFrames, int frameCount, int frameSize) override;
     const char* getName() const override { return "Breath"; }
@@ -32,7 +41,7 @@ private:
 // 彩虹效果
 class RainbowEffect : public AnimEffect {
 public:
-    RainbowEffect(int frames = 60) : frames_(frames) {}
+    RainbowEffect(int frames = 120) : frames_(frames) {}
     
     void generateAnimation(uint8_t* animFrames, int frameCount, int frameSize) override;
     const char* getName() const override { return "Rainbow"; }
@@ -44,7 +53,7 @@ private:
 // 闪烁效果
 class BlinkEffect : public AnimEffect {
 public:
-    BlinkEffect(uint8_t r = 255, uint8_t g = 255, uint8_t b = 255, int frames = 20) : r_(r), g_(g), b_(b), frames_(frames) {}
+    BlinkEffect(uint8_t r = 255, uint8_t g = 255, uint8_t b = 255, int frames = 60) : r_(r), g_(g), b_(b), frames_(frames) {}
     
     void generateAnimation(uint8_t* animFrames, int frameCount, int frameSize) override;
     const char* getName() const override { return "Blink"; }
@@ -59,7 +68,7 @@ private:
 class GradientEffect : public AnimEffect {
 public:
     GradientEffect(uint8_t r1 = 255, uint8_t g1 = 0, uint8_t b1 = 0,
-                   uint8_t r2 = 0, uint8_t g2 = 0, uint8_t b2 = 255, int frames = 40)
+                   uint8_t r2 = 0, uint8_t g2 = 0, uint8_t b2 = 255, int frames = 80)
         : r1_(r1), g1_(g1), b1_(b1), r2_(r2), g2_(g2), b2_(b2), frames_(frames) {}
     
     void generateAnimation(uint8_t* animFrames, int frameCount, int frameSize) override;
@@ -90,12 +99,11 @@ public:
     void generateAnimation(uint8_t* animFrames, int frameCount, int frameSize) override;
     const char* getName() const override { return "ColorTemp"; }
     int getFrameCount() const override { return 1; }
-    void setColorTemp(uint8_t tempIndex) { tempIndex_ = tempIndex; }
-    void setDuvIndex(uint8_t duvIndex) { 
-        duvIndex_ = duvIndex; 
-    }
-    uint8_t getColorTemp() const { return tempIndex_; }
-    uint8_t getDuvIndex() const { return duvIndex_; }
+    void setColorTemp(uint8_t tempIndex) override { tempIndex_ = tempIndex; }
+    void setDuvIndex(uint8_t duvIndex) override { duvIndex_ = duvIndex; }
+    uint8_t getColorTemp() const override { return tempIndex_; }
+    uint8_t getDuvIndex() const override { return duvIndex_; }
+    bool isColorTemp() const override { return true; }
 private:
     uint8_t tempIndex_;
     uint8_t duvIndex_;  // DUV索引 (1-5)
@@ -112,7 +120,7 @@ public:
         // 从数据头部读取帧数 (第1-2字节，大端模式)
         return (imageData_[0] << 8) | imageData_[1]; 
     }
-    int getFrameDelay() const {
+    int getFrameDelay() const override {
         if (!imageData_) return 50;
         // 从数据头部读取延迟 (第3字节)
         return imageData_[2];
