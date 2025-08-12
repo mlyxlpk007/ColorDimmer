@@ -119,10 +119,10 @@ void setLightPower(bool power, uint8_t brightness) {
         if (!animSystem.isRunning()) {
             animSystem.start();
         }
-        debug_printf("Light turned ON, brightness: %d%%\n", brightness);
+        Serial.printf("Light turned ON, brightness: %d%%\n", brightness);
     } else {
         set_brightness(0);  // 启动亮度平滑过渡到0
-        debug_println("Light turned OFF - brightness fading to 0");
+        Serial.println("Light turned OFF - brightness fading to 0");
     }
 }
 
@@ -136,15 +136,14 @@ rmt_item32_t bit0 ,bit1 ,reset_code;
 // 初始化函数
 void initIR() {
   irrecv.enableIRIn();  // 启动红外接收
-      debug_println("IR receiver initialized.");
+      Serial.println("IR receiver initialized.");
 }
-
 // 读取函数，返回接收到的值，如果没有返回0
 uint32_t readIR() {
   if (irrecv.decode(&results)) {
     uint32_t code = results.value;
-    debug_printf("IR Received: 0x%08X (Decimal: %lu)\n", code, code);
-    irrecv.resume();  // 准备下一次接收    
+    Serial.printf("IR Received: 0x%X\n", code);
+    irrecv.resume();  // 准备下一次接收
     return code;
   }
   return 0;  // 无数据
@@ -206,7 +205,7 @@ void processSerialData(uint8_t data) {
         // 校验成功，处理命令
         handleSerialCommand();
       } else {
-                debug_printf("Serial checksum error! received=0x%02X, calculated=0x%02X\n",
+                Serial.printf("Serial checksum error! received=0x%02X, calculated=0x%02X\n",
                      receivedChecksum, calculatedChecksum);
       }
       
@@ -222,12 +221,12 @@ void handleSerialCommand() {
   uint8_t cmd = serialBuffer[1];
   uint8_t length = serialBuffer[2];
   
-      debug_printf("Received command: 0x%02X, length: %d\n", cmd, length);
+      Serial.printf("Received command: 0x%02X, length: %d\n", cmd, length);
   
   // 除了开屏命令（D7命令的value>=1），其他命令只有在开屏状态下才处理
   if (!lightPower && (cmd != SERIAL_CMD_D7 || (length >= 1 && serialBuffer[3] < 1))) {
     // 关屏状态下，只允许开屏命令通过
-            debug_println("Light is OFF - command ignored");
+            Serial.println("Light is OFF - command ignored");
     return;
   }
   
@@ -272,7 +271,7 @@ void handleSerialCommand() {
           }
           // 平滑切换到目标色温（DUV索引默认取1或3，按你的协议，这里沿用1）
           animSystem.updateColorTemp(ct, 1, true);
-          debug_printf("Color temperature transition to: %d\n", ct);
+          Serial.printf("Color temperature transition to: %d\n", ct);
         }        
         // 发送响应
         uint8_t response[] = {ct};
@@ -305,7 +304,7 @@ void handleSerialCommand() {
             }
           }
           
-          debug_printf("Scene set to: %d (effect: %d)\n", scene, currentAnimEffect);
+          Serial.printf("Scene set to: %d (effect: %d)\n", scene, currentAnimEffect);
         }
         
         // 发送响应
@@ -371,21 +370,21 @@ void handleSerialCommand() {
           // 平滑切换到目标色温和DUV
           animSystem.updateColorTemp(colorTemp, duvValue, true);
           
-                  debug_printf("Set brightness: %d (0-1000), color temp: %d, DUV: 0x%02X\n",
+                  Serial.printf("Set brightness: %d (0-1000), color temp: %d, DUV: 0x%02X\n",
                      brightness, colorTemp, duvValue);
           
           // 发送响应（返回0xA0）
           uint8_t response[] = {0xA0};
           sendSerialResponse(SERIAL_CMD_A0, response, 1);
         } else {
-                  debug_printf("Invalid parameters: brightness=%d, colorTemp=%d, DUV=0x%02X\n",
+                  Serial.printf("Invalid parameters: brightness=%d, colorTemp=%d, DUV=0x%02X\n",
                      brightness, colorTemp, duvValue);
           // 发送错误响应
           uint8_t response[] = {0xFF}; // 0xFF表示参数错误
           sendSerialResponse(SERIAL_CMD_A0, response, 1);
         }
       } else {
-        debug_println("0xA0 command: insufficient data length");
+        Serial.println("0xA0 command: insufficient data length");
         // 发送错误响应
         uint8_t response[] = {0xFF}; // 0xFF表示数据长度不足
         sendSerialResponse(SERIAL_CMD_A0, response, 1);
@@ -394,16 +393,16 @@ void handleSerialCommand() {
     }
       
     default:
-              debug_println("Unknown command");
+              Serial.println("Unknown command");
       break;
   }
   
   // 打印接收到的数据（调试用）
-      debug_print("Data: ");
+      Serial.print("Data: ");
   for (int i = 3; i < 3 + length; i++) {
-          debug_printf("0x%02X ", serialBuffer[i]);
+          Serial.printf("0x%02X ", serialBuffer[i]);
   }
-      debug_println("");
+      Serial.println("");
 }
 
 // 发送串口响应
@@ -441,17 +440,17 @@ void testSerialProtocol() {
   Serial.write(testData[0]);
   Serial.write(checksum);
   
-      debug_println("Test command sent");
+      Serial.println("Test command sent");
 }
 
 class MyServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* pServer) {
     deviceConnected = true;
-            debug_println("client connected");
+            Serial.println("client connected");
   }
   void onDisconnect(BLEServer* pServer) {
     deviceConnected = false;
-            debug_println("client disconnect");
+            Serial.println("client disconnect");
     pServer->startAdvertising();  // 断开后自动重启广播
   }
 };
@@ -461,12 +460,12 @@ class MyCallbacks : public BLECharacteristicCallbacks {
     std::string value = pCharacteristic->getValue();
 
     if (value.length() > 0) {
-              debug_print("received data: ");
+              Serial.print("received data: ");
       for (int i = 0; i < value.length(); i++)
       {
-                  debug_print(value[i]);
+                  Serial.print(value[i]);
       }
-              debug_print("\n");
+              Serial.print("\n");
     }
   }
 };
@@ -542,18 +541,18 @@ void switchAnimationEffect() {
     animSystem.updateCurrentEffect();
   }
   
-          debug_printf("Switched to animation: %s\n", effectNames[currentAnimEffect]);
+          Serial.printf("Switched to animation: %s\n", effectNames[currentAnimEffect]);
 }
 // 🔘 按键检测任务（绑定 core 0）
 void TaskReadButton(void* pvParameters) {
-      debug_println("TaskReadButton");
+      Serial.println("TaskReadButton");
   while (true) {
     if (readButton()) {
         // 切换LED状态
         currentMode = static_cast<LedMode>((currentMode + 1) % 5);
         setLedMode(currentMode);
-        debug_print("[BTN] Switched to LED mode: ");
-        debug_println(currentMode);        
+        Serial.print("[BTN] Switched to LED mode: ");
+        Serial.println(currentMode);        
         // 同时切换动画效果
         switchAnimationEffect();
     }
@@ -563,7 +562,7 @@ void TaskReadButton(void* pvParameters) {
 
 // 💡 LED显示任务（绑定 core 1）
 void TaskLedControl(void* pvParameters) {
-       debug_println("TaskLedControl"); 
+       Serial.println("TaskLedControl"); 
   while (true) {
     unsigned long now = millis();
 
@@ -610,7 +609,7 @@ void TaskLedControl(void* pvParameters) {
 
 // 📡 串口通信任务（绑定 core 0）
 void TaskSerialComm(void* pvParameters) {
-      debug_println("TaskSerialComm started");  
+      Serial.println("TaskSerialComm started");  
   while (true) {
     if (Serial.available()) {
       uint8_t data = Serial.read();
@@ -619,7 +618,7 @@ void TaskSerialComm(void* pvParameters) {
     // 检查超时
     if (serialState != WAIT_HEADER && 
         (millis() - lastSerialReceiveTime) > SERIAL_TIMEOUT_MS) {
-              debug_println("Serial timeout, resetting state machine");
+              Serial.println("Serial timeout, resetting state machine");
       serialState = WAIT_HEADER;
       serialBufferIndex = 0;
     }    
@@ -654,7 +653,7 @@ void setup() {
   xTaskCreatePinnedToCore(
     TaskReadButton,    // 任务函数
     "ButtonTask",      // 名称
-    2048,              // 堆栈大小
+    4096,              // 堆栈大小
     NULL,              // 参数
     1,                 // 优先级
     NULL,              // 任务句柄
@@ -664,7 +663,7 @@ void setup() {
   xTaskCreatePinnedToCore(
     TaskLedControl,
     "LedTask",
-    2048,
+    4096,
     NULL,
     1,
     NULL,
@@ -684,10 +683,10 @@ void setup() {
   pCharacteristic->setValue("Hello from ESP32");
   pService->start();
   pServer->getAdvertising()->start();
-      debug_println("BLE Ready,wait connect"); 
+      Serial.println("BLE Ready,wait connect"); 
   Serial.end();  // 停止默认串口调试输出
   Serial.begin(9600);//重新初始化为通信用途
-      debug_println("Serial communication initialized at 9600 baud");  
+      Serial.println("Serial communication initialized at 9600 baud");  
   // 创建串口通信任务（core 0）
   xTaskCreatePinnedToCore(
     TaskSerialComm,    // 任务函数
@@ -703,9 +702,7 @@ void setup() {
 int current_lght=0;
 static uint32_t lastRepeatKey = 0;  // 记录可连续调节的上一次有效按键
 // 处理红外遥控码
-void handleIRCode(uint32_t code) {
-  // 打印接收到的红外码
-  debug_printf("Processing IR Code: 0x%08X (Decimal: %lu)\n", code, code);
+void handleIRCode(uint32_t code) {  // 打印接收到的红外码
 
   // 长按重复码（NEC通常为0xFFFFFFFF）：根据上一次按键持续调节
   if (code == 0xFFFFFFFF) {
@@ -780,71 +777,22 @@ void handleIRCode(uint32_t code) {
   }
   
   switch (code) {
-         case 0xFFA25D:  // 0键 - 开关灯光
+         case 0xFFA25D:  // 开关屏
        if (lightPower) {
          // 当前是开屏状态，执行关屏
          setLightPower(false, 0);
-         debug_println("IR: Key 0 - Light OFF");
+         Serial.println("IR: 0xFFA25D - Light OFF");
        } else {
          // 当前是关屏状态，执行开屏
          if (colorTempMode) {
            setLightPower(true, 100);  // 色温模式，100%亮度
-           debug_println("IR: Key 0 - Light ON (Color Temp Mode, 100%)");
+           Serial.println("IR: 0xFFA25D - Light ON (Color Temp Mode, 100%)");
          } else {
            setLightPower(true, 50);   // 默认模式，50%亮度
-           debug_println("IR: Key 0 - Light ON (Default Mode, 50%)");
+           Serial.println("IR: 0xFFA25D - Light ON (Default Mode, 50%)");
          }
        }
        break;
-      
-      case 0xFFE21D:  // 1键 - 色温
-       lightPower = true;
-       currentColorTemp = 2;
-       colorTempMode = true; // 进入色温模式
-       
-       // 确保动画系统运行在色温效果
-       if (!animSystem.isRunning()) {
-         animSystem.setEffect(&colorTempEffect);
-         animSystem.start();
-       } else {
-         animSystem.setEffect(&colorTempEffect);
-         animSystem.updateCurrentEffect();
-       }
-       
-       // 直接设置色温，不使用过渡动画
-       animSystem.updateColorTemp(currentColorTemp, currentDuvIndex, false);
-       debug_printf("IR: Key 1 - Color temp mode, temp=%d, DUV index %d, brightness=%d%%\n", currentColorTemp, currentDuvIndex, get_brightness());
-       break;
-      
-         case 0xFFE01F:  // 色温减/DUV减
-           {
-        lightPower = true;
-        if (colorTempMode) {
-          // 色温调节模式
-          if (currentColorTemp > 1) {
-            currentColorTemp--;
-          }
-          debug_printf("IR: Key 2 - Color temp decreased to %d\n", currentColorTemp);
-        } else {
-          // DUV调节模式
-          if (currentDuvIndex > 1) {
-            currentDuvIndex--;
-          }
-          debug_printf("IR: Key 2 - DUV decreased to %d\n", currentDuvIndex);
-        }
-        
-        // 确保动画系统运行在色温效果
-        if (!animSystem.isRunning()) {
-          animSystem.setEffect(&colorTempEffect);
-          animSystem.start();
-        } else {
-          animSystem.setEffect(&colorTempEffect);
-          animSystem.updateCurrentEffect();
-        }
-        // 直接设置色温和DUV，不使用过渡动画
-        animSystem.updateColorTemp(currentColorTemp, currentDuvIndex, false);
-            }
-      break;
             case 0xFF906F:  // 色温加/DUV加
            {
         lightPower = true;
@@ -853,13 +801,13 @@ void handleIRCode(uint32_t code) {
           if (currentColorTemp < 61) {
             currentColorTemp++;
           }
-          debug_printf("IR: Key 3 - Color temp increased to %d\n", currentColorTemp);
+          Serial.printf("IR: 0xFF906F - Color temp increased to %d\n", currentColorTemp);
         } else {
           // DUV调节模式
           if (currentDuvIndex < 5) {
             currentDuvIndex++;
           }
-          debug_printf("IR: Key 3 - DUV increased to %d\n", currentDuvIndex);
+          Serial.printf("IR: 0xFF906F - DUV increased to %d\n", currentDuvIndex);
         }
         
         // 确保动画系统运行在色温效果
@@ -873,37 +821,70 @@ void handleIRCode(uint32_t code) {
         // 直接设置色温和DUV，不使用过渡动画
         animSystem.updateColorTemp(currentColorTemp, currentDuvIndex, false);
       }
+      break;
          
-         case 0xFF02FD:  // 上键 - 增加亮度
+         case 0xFF02FD:  // 亮度加
        {
          uint8_t tgt = get_brightness() + 10;
          if (tgt > 100) tgt = 100;
          animSystem.setBrightnessSmooth(tgt);
-         debug_println("IR: Key 4 - Brightness increased");
+         Serial.println("IR: 0xFF02FD - Brightness increased");
        }
        break;
       
-      case 0xFF9867:  // 下键 - 减少亮度
+      case 0xFF9867:  // 亮度减
          {
            int tgt = (int)get_brightness() - 10;
            if (tgt < 10) tgt = 10;
            animSystem.setBrightnessSmooth((uint8_t)tgt);
-           debug_println("IR: Key 5 - Brightness decreased");
+           Serial.println("IR: 0xFF9867 - Brightness decreased");
          }
-         break;   
+         break;           
+         case 0xFFE01F:  // 色温减/DUV-
+         {
+           lightPower = true;
+           if (colorTempMode) {
+             // 色温调节模式
+             if (currentColorTemp > 1) {
+               currentColorTemp--;
+             }
+             if(currentColorTemp>61)
+             {
+              currentColorTemp=61;
+             }
+             Serial.printf("IR: 0xFFE01F - Color temp decreased to %d\n", currentColorTemp);
+           } else {
+             // DUV调节模式
+             if (currentDuvIndex > 1) {
+               currentDuvIndex--;
+             }
+             Serial.printf("IR: 0xFFE01F - DUV decreased to %d\n", currentDuvIndex);
+           }           
+           // 确保动画系统运行在色温效果
+           if (!animSystem.isRunning()) {
+             animSystem.setEffect(&colorTempEffect);
+             animSystem.start();
+           } else {
+             animSystem.setEffect(&colorTempEffect);
+             animSystem.updateCurrentEffect();
+           }           
+           // 直接设置色温和DUV，不使用过渡动画
+           animSystem.updateColorTemp(currentColorTemp, currentDuvIndex, false);
+         }
+         break;
          
-         case 0xFF6897:  // 6键 - 切换色温/DUV调节模式
+         case 0xFFE21D:  // DUV和色温调节模式切换
          {
            lightPower = true;
            // 切换调节模式
            if (colorTempMode) {
              // 当前是色温模式，切换到DUV调节模式
              colorTempMode = false;
-             debug_println("IR: Key 6 - Switched to DUV adjustment mode");
+             Serial.println("IR: 0xFFE21D - Switched to DUV adjustment mode");
            } else {
              // 当前是DUV模式，切换到色温调节模式
              colorTempMode = true;
-             debug_println("IR: Key 6 - Switched to color temperature adjustment mode");
+             Serial.println("IR: 0xFFE21D - Switched to color temperature adjustment mode");
            }
            
            // 确保动画系统运行在色温效果，使用当前的色温和DUV值
@@ -920,7 +901,7 @@ void handleIRCode(uint32_t code) {
          }
          break;
          
-              case 0xFF42BD:  // 7键 - 色温模式：1600K，DUV+6
+        case 0xFF42BD:  // 7键 - 色温模式：1600K，DUV+6
          {
            lightPower = true;
            currentColorTemp = 1;  // 1600K对应色温索引1
@@ -935,8 +916,8 @@ void handleIRCode(uint32_t code) {
              animSystem.updateCurrentEffect();
            }
                    // 使用20帧过渡切换（使用当前DUV索引）
-        animSystem.updateColorTemp(currentColorTemp, currentDuvIndex, true);
-        debug_printf("IR: Key 7 - Color temp mode 1600K, DUV index %d (transition)\n", currentDuvIndex);
+          animSystem.updateColorTemp(currentColorTemp, currentDuvIndex, true);
+          Serial.printf("IR: Key 7 - Color temp mode 1600K, DUV index %d (transition)\n", currentDuvIndex);
          }
          break;
       
@@ -956,7 +937,7 @@ void handleIRCode(uint32_t code) {
         }
         // 使用20帧过渡切换（使用当前DUV索引）
         animSystem.updateColorTemp(currentColorTemp, currentDuvIndex, true);
-        debug_printf("IR: Key 8 - Color temp mode 4000K, DUV index %d (transition)\n", currentDuvIndex);
+        Serial.printf("IR: Key 8 - Color temp mode 4000K, DUV index %d (transition)\n", currentDuvIndex);
       }
       break;
       
@@ -976,7 +957,7 @@ void handleIRCode(uint32_t code) {
         }
         // 使用20帧过渡切换（使用当前DUV索引）
         animSystem.updateColorTemp(currentColorTemp, currentDuvIndex, true);
-        debug_printf("IR: Key 9 - Color temp mode 2700K, DUV index %d (transition)\n", currentDuvIndex);
+        Serial.printf("IR: Key 9 - Color temp mode 2700K, DUV index %d (transition)\n", currentDuvIndex);
       }
       break;
       
@@ -996,7 +977,7 @@ void handleIRCode(uint32_t code) {
         }
         // 使用20帧过渡切换到目标色温（使用当前DUV索引）
         animSystem.updateColorTemp(currentColorTemp, currentDuvIndex, true);
-        debug_printf("IR: OK Key - Color temp mode 6500K, DUV index %d (transition)\n", currentDuvIndex);
+        Serial.printf("IR: OK Key - Color temp mode 6500K, DUV index %d (transition)\n", currentDuvIndex);
       }
       break;
       
@@ -1016,31 +997,27 @@ void handleIRCode(uint32_t code) {
         }
         // 使用20帧过渡切换（使用当前DUV索引）
         animSystem.updateColorTemp(currentColorTemp, currentDuvIndex, true);
-        debug_printf("IR: Left Key - Color temp mode 2700K, DUV index %d (transition)\n", currentDuvIndex);
+        Serial.printf("IR: Left Key - Color temp mode 2700K, DUV index %d (transition)\n", currentDuvIndex);
       }
       break;
       
     case 0xFF5AA5:  // 循环切换动画效果
       // 退出色温模式
-      colorTempMode = false;
-      
+      colorTempMode = false;      
       // 切换到下一个动画效果
-      currentAnimEffect = (currentAnimEffect + 1) % MAX_ANIM_EFFECTS;
-      
+      currentAnimEffect = (currentAnimEffect + 1) % MAX_ANIM_EFFECTS;      
       if (lightPower) {
         // 根据当前动画效果索引选择对应的效果
         AnimEffect* effects[] = {&imageDataEffect, &czcxEffect, &jl3Effect, &lt2Effect, &lt3Effect};
-        const char* effectNames[] = { "ImageData", "CZCX", "JL3", "LT2", "LT3"};
-        
+        const char* effectNames[] = { "ImageData", "CZCX", "JL3", "LT2", "LT3"};        
         if (!animSystem.isRunning()) {
           animSystem.setEffect(effects[currentAnimEffect]);
           animSystem.start();
         } else {
           animSystem.setEffect(effects[currentAnimEffect]);
           animSystem.updateCurrentEffect();
-        }
-        
-        debug_printf("IR: Menu Key - Cycle to animation %d: %s\n", currentAnimEffect, effectNames[currentAnimEffect]);
+        }        
+        Serial.printf("IR: Menu Key - Cycle to animation %d: %s\n", currentAnimEffect, effectNames[currentAnimEffect]);
       }
       break;
 
@@ -1051,11 +1028,11 @@ void handleIRCode(uint32_t code) {
         if (colorTempMode) {
           // 当前是色温模式，切换到DUV调节模式
           colorTempMode = false;
-          debug_printf("IR: Function Key - Switched to DUV adjustment mode, current DUV index: %d\n", currentDuvIndex);
+          Serial.printf("IR: Function Key - Switched to DUV adjustment mode, current DUV index: %d\n", currentDuvIndex);
         } else {
           // 当前是DUV模式，切换到色温调节模式
           colorTempMode = true;
-          debug_printf("IR: Function Key - Switched to color temperature adjustment mode, current temp: %d\n", currentColorTemp);
+          Serial.printf("IR: Function Key - Switched to color temperature adjustment mode, current temp: %d\n", currentColorTemp);
         }
         
         // 确保动画系统运行在色温效果，使用当前的色温和DUV值
@@ -1071,10 +1048,28 @@ void handleIRCode(uint32_t code) {
         animSystem.updateColorTemp(currentColorTemp, currentDuvIndex, false);
       }
       break;
-
-  
-    default:
-      /* log removed */
+      
+    case 0x3FFC7510:  // 新增功能键 - 可能是另一个功能切换键
+      {
+        lightPower = true;
+        Serial.printf("IR: New Function Key 0x3FFC7510 - Current status: Power=%s, ColorTemp=%d, DUV=%d, Brightness=%d%%\n", 
+                    lightPower ? "ON" : "OFF", currentColorTemp, currentDuvIndex, get_brightness());
+        
+        // 这里可以添加具体的功能逻辑
+        // 例如：切换动画效果、调整其他参数等
+        Serial.println("IR: New Function Key - Function not yet implemented");
+      }
+              break;
+    
+     default:
+      // 未识别的红外码，提供详细的调试信息
+    /*  Serial.printf("IR: Unknown Code 0x%08X - Current status: Power=%s, ColorTemp=%d, DUV=%d, Brightness=%d%%, ColorTempMode=%s\n", 
+                  code, 
+                  lightPower ? "ON" : "OFF", 
+                  currentColorTemp, 
+                  currentDuvIndex, 
+                  get_brightness(),
+                  colorTempMode ? "ON" : "OFF");*/
       lastRepeatKey = 0; // 其他键不连续调节
       break;
   }
@@ -1084,12 +1079,9 @@ void loop() {
     // 主循环 - 处理红外接收
     uint32_t irCode = readIR();
     if (irCode != 0) {
-        debug_println("=== IR Command Detected ===");
         handleIRCode(irCode);
-        debug_println("=== IR Command Processed ===");
-    }
-    
-    delay(50);  // 50ms延时，平衡响应速度和CPU占用
+    }    
+    delay(200);  // 50ms延时，平衡响应速度和CPU占用
 }
 
 
