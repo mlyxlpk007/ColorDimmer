@@ -171,8 +171,10 @@ void AnimSystem::updateColorTemp(uint8_t tempIndex, uint8_t duvIndex, bool useTr
     pendingDuvIndex_ = duvIndex;
 
     // 启动过渡：刷新buffer，触发更新
+    bufferUpdateInProgress_ = true;
     memcpy(bufferA_, &animFrames_[0], FRAME_SIZE);
     memcpy(bufferB_, &animFrames_[0], FRAME_SIZE);
+    bufferUpdateInProgress_ = false;
     xSemaphoreGive(animMutex_);
 
     if (eventGroup_) {
@@ -272,8 +274,10 @@ void AnimSystem::updateCurrentEffect() {
     }
 
     // 更新两个buffer为新的第一帧数据
+    bufferUpdateInProgress_ = true;
     memcpy(bufferA_, &animFrames_[0], FRAME_SIZE);
     memcpy(bufferB_, &animFrames_[0], FRAME_SIZE);
+    bufferUpdateInProgress_ = false;
     xSemaphoreGive(animMutex_);
     
     // 重新置位事件：先清，再置更新就绪
@@ -289,8 +293,10 @@ void AnimSystem::start() {
         animationRunning_ = true;
         currentFrame_ = 0;
         // 初始化第一帧数据到两个buffer
+        bufferUpdateInProgress_ = true;
         memcpy(bufferA_, &animFrames_[0], FRAME_SIZE);
         memcpy(bufferB_, &animFrames_[0], FRAME_SIZE);
+        bufferUpdateInProgress_ = false;
         updateBuffer_ = bufferA_;
         sendBuffer_ = bufferB_;
         // 事件初始化：清空并宣告有可发送帧
@@ -395,6 +401,9 @@ void AnimSystem::updateTask() {
                 portMAX_DELAY
             );
             if (bits & SEND_COMPLETE_BIT) {
+                // 设置更新状态标志
+                bufferUpdateInProgress_ = true;
+                
                 xSemaphoreTake(animMutex_, portMAX_DELAY);
 
                 // 写入当前帧到更新buffer
@@ -410,6 +419,10 @@ void AnimSystem::updateTask() {
                 }
 
                 xSemaphoreGive(animMutex_);
+                
+                // 清除更新状态标志
+                bufferUpdateInProgress_ = false;
+                
                 // 通知发送任务：更新就绪
                 xEventGroupSetBits(eventGroup_, UPDATE_READY_BIT);
 
@@ -463,25 +476,40 @@ void AnimSystem::sendTask() {
                 UPDATE_READY_BIT,
                 pdTRUE,
                 pdFALSE,
-                portMAX_DELAY
+                pdMS_TO_TICKS(50)  // 添加超时，避免无限等待
             );
+            
             if (bits & UPDATE_READY_BIT) {
-                // 交换buffer，使新更新的buffer成为发送buffer
-                xSemaphoreTake(animMutex_, portMAX_DELAY);
-                temp = updateBuffer_;
-                updateBuffer_ = sendBuffer_;
-                sendBuffer_ = temp;
-                xSemaphoreGive(animMutex_);
-
-                // 发送当前发送buffer的数据
+                // 检查更新状态和互斥锁状态
+                if (!bufferUpdateInProgress_ && xSemaphoreTake(animMutex_, 0) == pdTRUE) {
+                    // 更新完成且可以安全切换：交换buffer
+                    temp = updateBuffer_;
+                    updateBuffer_ = sendBuffer_;
+                    sendBuffer_ = temp;
+                    xSemaphoreGive(animMutex_);
+                    
+                    // 发送新切换的buffer数据
+                    send_data(sendBuffer_, FRAME_SIZE, 0xFFFF);
+                    
+                    // 通知更新任务可以准备下一帧
+                    xEventGroupSetBits(eventGroup_, SEND_COMPLETE_BIT);
+                } else {
+                    // 更新进行中或无法获取锁：重复发送当前buffer，避免显示中断
+                    send_data(sendBuffer_, FRAME_SIZE, 0xFFFF);
+                    
+                    // 延迟一帧时间，等待更新完成
+                    vTaskDelay(pdMS_TO_TICKS(frameDelayMs_));
+                    continue;  // 继续循环，不设置SEND_COMPLETE_BIT
+                }
+            } else {
+                // 超时或没有更新就绪：重复发送当前buffer保持显示
                 send_data(sendBuffer_, FRAME_SIZE, 0xFFFF);
-
-                // 通知更新任务可以准备下一帧
-                xEventGroupSetBits(eventGroup_, SEND_COMPLETE_BIT);
-
-                // 使用效果的帧延时
                 vTaskDelay(pdMS_TO_TICKS(frameDelayMs_));
+                continue;
             }
+
+            // 使用效果的帧延时
+            vTaskDelay(pdMS_TO_TICKS(frameDelayMs_));
         } else {
             vTaskDelay(10 / portTICK_PERIOD_MS);
         }

@@ -79,6 +79,8 @@ private:
     bool brightnessFreezeActive_ = false;
     uint8_t lastUsedBrightness_ = 100;
     uint8_t pendingBrightness_ = 0;
+    // 缓冲区更新状态控制
+    volatile bool bufferUpdateInProgress_ = false;
     
     // 亮度控制
     uint8_t brightness_ = 100;

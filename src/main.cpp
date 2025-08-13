@@ -984,7 +984,7 @@ void handleIRCode(uint32_t code) {  // 打印接收到的红外码
     case 0xFF38C7:  // 左键 - 色温模式：2700K，DUV:-3
       {
         lightPower = true;
-        currentColorTemp = 10;  // 2700K对应色温索引10
+        currentColorTemp = 40;  // 2700K对应色温索引10
         colorTempMode = true; // 进入色温模式
         
         // 确保动画系统运行在色温效果
@@ -997,7 +997,7 @@ void handleIRCode(uint32_t code) {  // 打印接收到的红外码
         }
         // 使用20帧过渡切换（使用当前DUV索引）
         animSystem.updateColorTemp(currentColorTemp, currentDuvIndex, true);
-        Serial.printf("IR: Left Key - Color temp mode 2700K, DUV index %d (transition)\n", currentDuvIndex);
+        Serial.printf("IR: Left Key - Color temp mode 8000K, DUV index %d (transition)\n", currentDuvIndex);
       }
       break;
       
