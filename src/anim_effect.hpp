@@ -129,4 +129,26 @@ public:
     const uint8_t* getImageData() const { return imageData_; }
 private:
     const uint8_t* imageData_;  // 指向images.h中的数组
+};
+
+// 烛火效果（适配器类，兼容AnimSystem）
+class CandleFlameEffect : public AnimEffect {
+public:
+    CandleFlameEffect(uint8_t r = 255, uint8_t g = 100, uint8_t b = 50, int frames = 60) 
+        : r_(r), g_(g), b_(b), frames_(frames) {}
+    
+    void generateAnimation(uint8_t* animFrames, int frameCount, int frameSize) override;
+    const char* getName() const override { return "CandleFlame"; }
+    int getFrameCount() const override { return frames_; }
+    int getFrameDelay() const override { return 50; }  // 50ms每帧
+    
+    void setColor(uint8_t r, uint8_t g, uint8_t b) { r_ = r; g_ = g; b_ = b; }
+    void setFlameIntensity(float intensity) { flameIntensity_ = intensity; }
+    void setWindEffect(float wind) { windEffect_ = wind; }
+    
+private:
+    uint8_t r_, g_, b_;
+    int frames_;
+    float flameIntensity_ = 1.0f;
+    float windEffect_ = 0.5f;
 }; 

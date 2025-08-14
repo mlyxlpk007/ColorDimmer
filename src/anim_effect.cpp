@@ -94,5 +94,48 @@ void ImageDataEffect::generateAnimation(uint8_t* animFrames, int frameCount, int
     Serial.printf("ImageDataEffect: Copied %d bytes of RGB data\n", copySize);
 } 
 
-
- 
+// CandleFlameEffect实现
+void CandleFlameEffect::generateAnimation(uint8_t* animFrames, int frameCount, int frameSize) {
+    const int W = 6, H = 6;
+    
+    for (int f = 0; f < frameCount; ++f) {
+        for (int y = 0; y < H; ++y) {
+            for (int x = 0; x < W; ++x) {
+                int idx = f * frameSize + (y * W + x) * 3;
+                
+                // 计算火焰效果
+                float flameX = (float)x / (W - 1);  // 0.0 到 1.0
+                float flameY = (float)y / (H - 1);  // 0.0 到 1.0
+                
+                // 火焰形状：底部宽，顶部窄
+                float flameShape = 1.0f - flameY * 0.8f;  // 顶部收缩
+                
+                // 添加火焰晃动效果
+                float time = (float)f * 0.1f;
+                float windX = sin(time * 2.0f + flameY * 3.0f) * windEffect_ * 0.3f;
+                float windY = sin(time * 1.5f + flameX * 2.0f) * windEffect_ * 0.2f;
+                
+                // 火焰强度变化
+                float flicker = 0.7f + 0.3f * sin(time * 8.0f + flameX * 5.0f);
+                flicker *= flameIntensity_;
+                
+                // 计算最终颜色
+                float r = (float)r_ * flameShape * flicker * (1.0f + windX);
+                float g = (float)g_ * flameShape * flicker * (1.0f + windY);
+                float b = (float)b_ * flameShape * flicker * 0.5f;  // 蓝色较少
+                
+                // 限制在有效范围内
+                r = constrain(r, 0, 255);
+                g = constrain(g, 0, 255);
+                b = constrain(b, 0, 255);
+                
+                animFrames[idx + 0] = (uint8_t)r;  // R
+                animFrames[idx + 1] = (uint8_t)g;  // G
+                animFrames[idx + 2] = (uint8_t)b;  // B
+            }
+        }
+    }
+    
+    Serial.printf("CandleFlameEffect generated: %d frames, color R=%d G=%d B=%d, intensity=%.2f, wind=%.2f\n", 
+                  frameCount, r_, g_, b_, flameIntensity_, windEffect_);
+}

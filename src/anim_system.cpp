@@ -486,8 +486,7 @@ void AnimSystem::sendTask() {
                     temp = updateBuffer_;
                     updateBuffer_ = sendBuffer_;
                     sendBuffer_ = temp;
-                    xSemaphoreGive(animMutex_);
-                    
+                    xSemaphoreGive(animMutex_);                    
                     // 发送新切换的buffer数据
                     send_data(sendBuffer_, FRAME_SIZE, 0xFFFF);
                     
@@ -495,7 +494,7 @@ void AnimSystem::sendTask() {
                     xEventGroupSetBits(eventGroup_, SEND_COMPLETE_BIT);
                 } else {
                     // 更新进行中或无法获取锁：重复发送当前buffer，避免显示中断
-                    send_data(sendBuffer_, FRAME_SIZE, 0xFFFF);
+                    send_data(sendBuffer_, FRAME_SIZE, 0x00F0);
                     
                     // 延迟一帧时间，等待更新完成
                     vTaskDelay(pdMS_TO_TICKS(frameDelayMs_));

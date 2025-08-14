@@ -22,6 +22,7 @@
 
 
 
+
 #define SID_MAX_CHIPS 36
 #define IR_RECV_PIN 26
 #define BUTTON_PIN 33
@@ -94,10 +95,11 @@ ImageDataEffect czcxEffect(czcx_data);            // 彩虹彩虹效果
 ImageDataEffect jl3Effect(jl3_data);              // 极光3效果
 ImageDataEffect lt2Effect(lt2_data);              // 流星2效果
 ImageDataEffect lt3Effect(lt3_data);              // 流星3效果
+CandleFlameEffect candleFlameEffect(255, 100, 50, 60);  // 橙红色烛火效果
 
 // 当前动画效果索引
 int currentAnimEffect = 0;
-const int MAX_ANIM_EFFECTS = 10;  // 增加了5个ImageDataEffect
+const int MAX_ANIM_EFFECTS = 11;  // 增加了6个动画效果（包括新的烛火效果）
 
 // 色温和场景控制
 uint8_t currentColorTemp = 1;    // 当前色温索引 (1-61)
@@ -287,21 +289,40 @@ void handleSerialCommand() {
         uint8_t scene = serialBuffer[3];
         if (scene <= 30) {
           currentScene = scene;
-          currentAnimEffect = scene % MAX_ANIM_EFFECTS; // 映射到动画效果
+          
+          // 场景映射到动画效果
+          if (scene == 0) {
+            currentAnimEffect = 0;  // WhiteStatic
+          } else if (scene >= 1 && scene <= 5) {
+            currentAnimEffect = scene;  // ImageData, CZCX, JL3, LT2, LT3
+          } else if (scene == 6) {
+            currentAnimEffect = 6;  // CandleFlame
+          } else {
+            // 其他场景循环映射
+            currentAnimEffect = (scene % 7);  // 7种动画效果
+          }
+          
           colorTempMode = false; // 退出色温模式
           
           // 根据场景设置不同的动画效果
-          AnimEffect* effects[] = {&imageDataEffect, &czcxEffect, &jl3Effect, &lt2Effect, &lt3Effect};
-          if (lightPower) {
-            // 如果动画系统还没启动，先启动
-            if (!animSystem.isRunning()) {
-              animSystem.setEffect(effects[currentAnimEffect]);
-              animSystem.start();
-            } else {
-              // 如果已经在运行，直接更新效果
-              animSystem.setEffect(effects[currentAnimEffect]);
-              animSystem.updateCurrentEffect();
+          AnimEffect* effects[] = {&whiteStaticEffect, &imageDataEffect, &czcxEffect, &jl3Effect, &lt2Effect, &lt3Effect, &candleFlameEffect};
+          
+          // 确保索引在有效范围内
+          if (currentAnimEffect >= 0 && currentAnimEffect < sizeof(effects)/sizeof(effects[0])) {
+            if (lightPower) {
+              // 如果动画系统还没启动，先启动
+              if (!animSystem.isRunning()) {
+                animSystem.setEffect(effects[currentAnimEffect]);
+                animSystem.start();
+              } else {
+                // 如果已经在运行，直接更新效果
+                animSystem.setEffect(effects[currentAnimEffect]);
+                animSystem.updateCurrentEffect();
+              }
             }
+          } else {
+            Serial.printf("Error: Invalid animation effect index: %d (max: %d)\n", 
+                         currentAnimEffect, (int)(sizeof(effects)/sizeof(effects[0]) - 1));
           }
           
           Serial.printf("Scene set to: %d (effect: %d)\n", scene, currentAnimEffect);
@@ -528,8 +549,8 @@ bool readButton() {
 void switchAnimationEffect() {
   currentAnimEffect = (currentAnimEffect + 1) % MAX_ANIM_EFFECTS;
   
-  AnimEffect* effects[] = { &whiteStaticEffect, &imageDataEffect, &czcxEffect, &jl3Effect, &lt2Effect, &lt3Effect};
-  const char* effectNames[] = {"WhiteStatic", "ImageData", "CZCX", "JL3", "LT2", "LT3"};
+  AnimEffect* effects[] = { &whiteStaticEffect, &imageDataEffect, &czcxEffect, &jl3Effect, &lt2Effect, &lt3Effect, &candleFlameEffect};
+  const char* effectNames[] = {"WhiteStatic", "ImageData", "CZCX", "JL3", "LT2", "LT3", "CandleFlame"};
   
   // 如果动画系统还没启动，先启动
   if (!animSystem.isRunning()) {
@@ -542,6 +563,21 @@ void switchAnimationEffect() {
   }
   
           Serial.printf("Switched to animation: %s\n", effectNames[currentAnimEffect]);
+}
+
+// 直接切换到烛火效果
+void switchToCandleFlame() {
+  currentAnimEffect = 6;  // 烛火效果的索引
+  
+  if (!animSystem.isRunning()) {
+    animSystem.setEffect(&candleFlameEffect);
+    animSystem.start();
+  } else {
+    animSystem.setEffect(&candleFlameEffect);
+    animSystem.updateCurrentEffect();
+  }
+  
+  Serial.println("Switched to CandleFlame animation");
 }
 // 🔘 按键检测任务（绑定 core 0）
 void TaskReadButton(void* pvParameters) {
@@ -645,9 +681,20 @@ void setup() {
   colorTempMode = false;  // 默认不是色温模式
   lightPower = true;
   
-  // 设置默认动画效果（呼吸灯）
+  // 设置默认动画效果（白色常亮）
   animSystem.setEffect(&whiteStaticEffect);
   animSystem.start();
+  
+  // 打印可用的动画效果
+  Serial.println("Available animations:");
+  Serial.println("0: WhiteStatic (白色常亮)");
+  Serial.println("1: ImageData (图片动画)");
+  Serial.println("2: CZCX (彩虹彩虹)");
+  Serial.println("3: JL3 (极光3)");
+  Serial.println("4: LT2 (流星2)");
+  Serial.println("5: LT3 (流星3)");
+  Serial.println("6: CandleFlame (烛火效果)");
+  Serial.println("Use IR remote or button to cycle through animations");
  initIR();
   // 创建按键检测任务（core 0）
   xTaskCreatePinnedToCore(
@@ -1008,8 +1055,8 @@ void handleIRCode(uint32_t code) {  // 打印接收到的红外码
       currentAnimEffect = (currentAnimEffect + 1) % MAX_ANIM_EFFECTS;      
       if (lightPower) {
         // 根据当前动画效果索引选择对应的效果
-        AnimEffect* effects[] = {&imageDataEffect, &czcxEffect, &jl3Effect, &lt2Effect, &lt3Effect};
-        const char* effectNames[] = { "ImageData", "CZCX", "JL3", "LT2", "LT3"};        
+        AnimEffect* effects[] = {&whiteStaticEffect, &imageDataEffect, &czcxEffect, &jl3Effect, &lt2Effect, &lt3Effect, &candleFlameEffect};
+        const char* effectNames[] = { "WhiteStatic", "ImageData", "CZCX", "JL3", "LT2", "LT3", "CandleFlame"};        
         if (!animSystem.isRunning()) {
           animSystem.setEffect(effects[currentAnimEffect]);
           animSystem.start();
@@ -1057,7 +1104,10 @@ void handleIRCode(uint32_t code) {  // 打印接收到的红外码
         
         // 这里可以添加具体的功能逻辑
         // 例如：切换动画效果、调整其他参数等
-        Serial.println("IR: New Function Key - Function not yet implemented");
+        // 切换到烛火效果
+        switchToCandleFlame();
+        
+        Serial.println("IR: CandleFlame Key - Switched to candle flame animation");
       }
               break;
     

@@ -105,6 +105,22 @@ private:
     int pulseCount_;
 };
 
+// 烛火晃动动画
+class CandleFlameAnimation : public DynamicAnimation {
+public:
+    CandleFlameAnimation(uint8_t r, uint8_t g, uint8_t b, int frameCount = 60);
+    
+    void generateFrame(uint8_t* buffer, int frameIndex) override;
+    void setColor(uint8_t r, uint8_t g, uint8_t b);
+    void setFlameIntensity(float intensity);  // 火焰强度 (0.0-1.0)
+    void setWindEffect(float wind);           // 风效果强度 (0.0-1.0)
+    
+private:
+    uint8_t r_, g_, b_;
+    float flameIntensity_;  // 火焰强度
+    float windEffect_;      // 风效果强度
+};
+
 // 随机闪烁动画
 class RandomBlinkAnimation : public DynamicAnimation {
 public:
@@ -119,4 +135,28 @@ private:
     uint8_t r_, g_, b_;
     float density_;  // 闪烁密度 (0.0-1.0)
     uint32_t randomSeed_;
-}; 
+};
+
+// ==================== 烛火数据生成函数 ====================
+
+// 生成60帧烛火晃动数据
+void generateCandleFlameData(uint8_t* buffer, int frameCount, uint8_t r, uint8_t g, uint8_t b);
+
+// 生成优化的烛火数据（更真实的火焰效果）
+void generateOptimizedCandleFlameData(uint8_t* buffer, int frameCount, uint8_t r, uint8_t g, uint8_t b);
+
+// ==================== 使用示例函数 ====================
+
+// 创建60帧烛火动画数据示例
+void createCandleFlameExample(uint8_t* buffer);
+
+// 创建暖黄色烛火效果
+void createWarmCandleFlame(uint8_t* buffer);
+
+// 创建蓝色火焰效果（魔法火焰）
+void createBlueMagicFlame(uint8_t* buffer);
+
+// ==================== 测试和演示函数 ====================
+
+// 测试烛火动画效果
+void testCandleFlameAnimation(); 
